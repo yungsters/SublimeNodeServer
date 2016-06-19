@@ -25,7 +25,8 @@ def plugin_loaded():
     SublimeNodeServer.thread = SublimeNodeServer(SERVER_ADDRESS, SERVER_PATH)
     SublimeNodeServer.thread.start()
 
-    SublimeNodeServer.thread.send("Hello world!")
+    SublimeNodeServer.thread.send("Hello...")
+    SublimeNodeServer.thread.send("...world!")
 
 def plugin_unloaded():
     """Called just before the plugin is unloaded."""
@@ -122,7 +123,8 @@ class SublimeNodeServer(threading.Thread):
     def send(self, message, callback=None):
         """Sends a message to the node server."""
         if self.client:
-            self.client.send(bytes(message, "utf-8"))
+            encoded = sublime.encode_value(message) + "\n"
+            self.client.send(bytes(encoded, "utf-8"))
             if callback:
                 callback()
         else:

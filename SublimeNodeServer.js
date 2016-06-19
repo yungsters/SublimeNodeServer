@@ -8,8 +8,15 @@ const net = require('net');
 const SERVER_ADDRESS = process.argv[2];
 
 const server = net.createServer(socket => {
+  let buffer = '';
   socket.on('data', data => {
-    console.log('[SublimeNodeServer] Received: ' + data);
+    buffer += data;
+    let eol;
+    while ((eol = buffer.indexOf('\n')) >= 0) {
+      const message = JSON.parse(buffer.substr(0, eol));
+      buffer = buffer.substr(eol + 1);
+      console.log('Received: %s', message);
+    }
   });
 }).on('error', error => {
   throw error;
