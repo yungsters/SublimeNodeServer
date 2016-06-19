@@ -22,22 +22,10 @@ SERVER_PATH = os.path.join(
 
 def plugin_loaded():
     """Called when the Sublime Text API is ready for use."""
-    if os.path.exists(SERVER_ADDRESS):
-        os.unlink(SERVER_ADDRESS)
-
     SublimeNodeServer.thread = SublimeNodeServer(SERVER_ADDRESS, SERVER_PATH)
     SublimeNodeServer.thread.start()
 
-    client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    connected = False
-    while not connected:
-        try:
-            client.connect(SERVER_ADDRESS)
-            connected = True
-        except (ConnectionRefusedError, FileNotFoundError):
-            time.sleep(0.1)
-
-    client.send(bytes("Hello world!", "utf-8"))
+    SublimeNodeServer.thread.send("Hello world!")
 
 def plugin_unloaded():
     """Called just before the plugin is unloaded."""
@@ -71,8 +59,13 @@ class SublimeNodeServer(threading.Thread):
         self.server_address = server_address
         self.server_path = server_path
         self.child = None
+        self.client = None
+        self.queue = []
 
     def run(self):
+        if os.path.exists(self.server_address):
+            os.unlink(self.server_address)
+
         env = os.environ.copy()
         env["PATH"] += ''.join([':' + path for path in get_node_paths()])
         try:
@@ -88,6 +81,11 @@ class SublimeNodeServer(threading.Thread):
                 "Couldn't find `node` in `{0}`.".format(env["PATH"])
             )
 
+        self.client = self.connect()
+        for (message, callback) in self.queue:
+            self.send(message, callback)
+        del self.queue[:]
+
         while child.poll() is None:
             stdout = child.stdout.readline().decode("utf-8")
             sys.stdout.write(stdout)
@@ -102,6 +100,33 @@ class SublimeNodeServer(threading.Thread):
                 "\n".join(["> " + line for line in stderr.split("\n")])
             )
             raise Exception(message)
+
+    def connect(self):
+        """Connects to the node server."""
+        client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        end_time = time.time() + 10
+        while True:
+            remaining_time = end_time - time.time()
+            if remaining_time < 0:
+                raise Exception(
+                    "Unable to connect to `{0}`".format(self.server_address)
+                )
+            try:
+                client.connect(self.server_address)
+                break
+            except (ConnectionRefusedError, FileNotFoundError):
+                time.sleep(0.1)
+
+        return client
+
+    def send(self, message, callback=None):
+        """Sends a message to the node server."""
+        if self.client:
+            self.client.send(bytes(message, "utf-8"))
+            if callback:
+                callback()
+        else:
+            self.queue.append((message, callback))
 
     def exit(self):
         """Sends SIGINT to the node child process."""
