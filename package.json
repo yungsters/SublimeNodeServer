@@ -1,0 +1,9 @@
+{
+  "name": "SublimeNodeServer",
+  "description": "Bridge for writing Sublime Text plugins using Node.js.",
+  "repository": "yungsters/SublimeNodeServer",
+  "license": "MIT",
+  "dependencies": {
+    "babel-register": "^6.9.0"
+  }
+}

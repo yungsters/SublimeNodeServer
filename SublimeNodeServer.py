@@ -18,7 +18,7 @@ SERVER_ADDRESS = "/tmp/sublime-node-server.sock"
 SERVER_PATH = os.path.join(
     sublime.packages_path(),
     os.path.dirname(os.path.realpath(__file__)),
-    "SublimeNodeServer.js"
+    "index.js"
 )
 
 def plugin_loaded():
@@ -112,7 +112,7 @@ class SublimeNodeClient(threading.Thread):
     """Manages communication with the node server."""
 
     BRIDGE_THROTTLE = 0.01
-    CONNECT_TIMEOUT = 10
+    CONNECT_TIMEOUT = 30
 
     def __init__(self, server_address):
         threading.Thread.__init__(self, name="SublimeNodeClientThread")
