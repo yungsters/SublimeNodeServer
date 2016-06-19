@@ -60,7 +60,7 @@ class SublimeNodeServer(threading.Thread):
     thread = None
 
     def __init__(self, server_address, server_path):
-        threading.Thread.__init__(self)
+        threading.Thread.__init__(self, name="SublimeNodeServerThread")
         self.server_address = server_address
         self.server_path = server_path
         self.child = None
@@ -115,7 +115,7 @@ class SublimeNodeClient(threading.Thread):
     CONNECT_TIMEOUT = 10
 
     def __init__(self, server_address):
-        threading.Thread.__init__(self)
+        threading.Thread.__init__(self, name="SublimeNodeClientThread")
         self.server_address = server_address
         self.connected = False
         self.queue = queue.Queue()
@@ -141,7 +141,7 @@ class SublimeNodeClient(threading.Thread):
                 encoded = sublime.encode_value(message) + "\n"
                 client.send(bytes(encoded, "utf-8"))
                 if callback:
-                    callback()
+                    sublime.set_timeout(callback, 0)
             time.sleep(SublimeNodeClient.BRIDGE_THROTTLE)
 
         client.close()
