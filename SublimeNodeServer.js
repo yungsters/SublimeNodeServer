@@ -1,5 +1,6 @@
 /**
  * SublimeNodeServer.js
+ * @flow
  */
 'use strict';
 
@@ -15,10 +16,12 @@ const server = net.createServer(socket => {
     while ((eol = buffer.indexOf('\n')) >= 0) {
       const message = JSON.parse(buffer.substr(0, eol));
       buffer = buffer.substr(eol + 1);
-      console.log('Received: %s', message);
+      console.log('[SublimeNodeServer] Received: %s', message);
     }
   });
-}).on('error', error => {
+});
+
+server.on('error', error => {
   throw error;
 });
 
