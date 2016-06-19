@@ -3,6 +3,7 @@ SublimeNodeServer.py
 """
 
 import getpass
+import queue
 import os
 import platform
 import socket
@@ -22,16 +23,19 @@ SERVER_PATH = os.path.join(
 
 def plugin_loaded():
     """Called when the Sublime Text API is ready for use."""
+    if os.path.exists(SERVER_ADDRESS):
+        os.unlink(SERVER_ADDRESS)
+
     SublimeNodeServer.thread = SublimeNodeServer(SERVER_ADDRESS, SERVER_PATH)
     SublimeNodeServer.thread.start()
 
-    SublimeNodeServer.thread.send("Hello...")
-    SublimeNodeServer.thread.send("...world!")
+    SublimeNodeServer.thread.client.send("Hello...")
+    SublimeNodeServer.thread.client.send("...world!")
 
 def plugin_unloaded():
     """Called just before the plugin is unloaded."""
     if SublimeNodeServer.thread:
-        SublimeNodeServer.thread.exit()
+        SublimeNodeServer.thread.terminate()
 
 def get_node_paths():
     """Finds platform-specific node paths."""
@@ -51,7 +55,7 @@ def get_node_paths():
     return node_paths
 
 class SublimeNodeServer(threading.Thread):
-    """Manages the node server."""
+    """Manages the node server and printing its output."""
 
     thread = None
 
@@ -60,13 +64,9 @@ class SublimeNodeServer(threading.Thread):
         self.server_address = server_address
         self.server_path = server_path
         self.child = None
-        self.client = None
-        self.queue = []
+        self.client = SublimeNodeClient(self.server_address)
 
     def run(self):
-        if os.path.exists(self.server_address):
-            os.unlink(self.server_address)
-
         env = os.environ.copy()
         env["PATH"] += ''.join([':' + path for path in get_node_paths()])
         try:
@@ -82,10 +82,7 @@ class SublimeNodeServer(threading.Thread):
                 "Couldn't find `node` in `{0}`.".format(env["PATH"])
             )
 
-        self.client = self.connect()
-        for (message, callback) in self.queue:
-            self.send(message, callback)
-        del self.queue[:]
+        self.client.start()
 
         while child.poll() is None:
             stdout = child.stdout.readline().decode("utf-8")
@@ -102,11 +99,31 @@ class SublimeNodeServer(threading.Thread):
             )
             raise Exception(message)
 
-    def connect(self):
-        """Connects to the node server."""
+    def terminate(self):
+        """Sends SIGINT to the node child process."""
+        if self.client:
+            self.client.terminate()
+            self.client = None
+        if self.child.poll() is None:
+            self.child.terminate()
+            self.child = None
+
+class SublimeNodeClient(threading.Thread):
+    """Manages communication with the node server."""
+
+    BRIDGE_THROTTLE = 0.01
+    CONNECT_TIMEOUT = 10
+
+    def __init__(self, server_address):
+        threading.Thread.__init__(self)
+        self.server_address = server_address
+        self.connected = False
+        self.queue = queue.Queue()
+
+    def run(self):
         client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        end_time = time.time() + 10
-        while True:
+        end_time = time.time() + SublimeNodeClient.CONNECT_TIMEOUT
+        while not self.connected:
             remaining_time = end_time - time.time()
             if remaining_time < 0:
                 raise Exception(
@@ -114,23 +131,26 @@ class SublimeNodeServer(threading.Thread):
                 )
             try:
                 client.connect(self.server_address)
-                break
+                self.connected = True
             except (ConnectionRefusedError, FileNotFoundError):
-                time.sleep(0.1)
+                pass
 
-        return client
+        while self.connected:
+            while not self.queue.empty():
+                (message, callback) = self.queue.get()
+                encoded = sublime.encode_value(message) + "\n"
+                client.send(bytes(encoded, "utf-8"))
+                if callback:
+                    callback()
+            time.sleep(SublimeNodeClient.BRIDGE_THROTTLE)
+
+        client.close()
 
     def send(self, message, callback=None):
         """Sends a message to the node server."""
-        if self.client:
-            encoded = sublime.encode_value(message) + "\n"
-            self.client.send(bytes(encoded, "utf-8"))
-            if callback:
-                callback()
-        else:
-            self.queue.append((message, callback))
+        self.queue.put((message, callback))
 
-    def exit(self):
-        """Sends SIGINT to the node child process."""
-        if self.child.poll() is None:
-            self.child.terminate()
+    def terminate(self):
+        """Disconnects from the node server and terminates this thread."""
+        self.connected = False
+
