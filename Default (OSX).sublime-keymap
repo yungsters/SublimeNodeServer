@@ -1,0 +1,3 @@
+[
+  { "keys": ["super+alt+ctrl+t"], "command": "sublime_node_text" }
+]
